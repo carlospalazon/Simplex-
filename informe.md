@@ -1,26 +1,23 @@
-# Pràctica Símplex: Resolució de Problemes
 
-## 1. Membres del grup
-- Carlos Palazón - DNI:
-- Pol Riera - DNI: 39480980P
-
-## 2. Nombre de conjunts de dades usats
-S'han utilitzat **dos conjunts de dades**: el conjunt **34** i el conjunt **37**, resolent un total de 8 problemes d'optimització.
-
-## 3. Descripció resumida de la implementació
+## 1. Descripció resumida de la implementació
 
 Hem implementat la solució en Python a través de la classe `SimplexSolver`, aplicant el **mètode del símplex primal estructurat en dues fases** i utilitzant la **regla de Bland** en totes les decisions per evitar la degeneració.
 
+Respecte l'aplicació del model, s'han utilitzat dos conjunts de dades: el conjunt 34 i el conjunt 37, resolent un total de 8 problemes d'optimització.
 La seqüència d'execució del nostre codi és la següent:
 
-1. **Preprocessament:** Forcem els termes independents a ser no negatius ($b_i \geq 0$) canviant el signe de tota la fila corresponent de la matriu $A$ si és necessari.
-2. **Fase I (Solució Bàsica Factible Inicial):** Per assegurar l'arrencada independentment de les restriccions del problema, estenem la matriu afegint variables artificials (una matriu identitat) que componen la base inicial. Executem el nucli del símplex amb una funció objectiu que minimitza la suma d'aquestes variables artificials. Si el valor òptim d'aquesta fase és major que $0$ (considerant una tolerància de $10^{-8}$), declarem el problema com a infactible.
-3. **Fase II (Optimització real):** Un cop eliminades les variables artificials no bàsiques i garantida la factibilitat, restaurem el vector de costos original $c$ i reprenem l'execució del símplex fins assolir l'òptim global o detectar no acotació.
-4. **Nucli iteratiu:** En cada iteració, per calcular valors de variables bàsiques ($x_B$), multiplicadors i la direcció de descens, resolem els sistemes d'equacions lineals associats $B x_B = b$, $B^T w = c_B$ i $B d = A_q$ aplicant el mètode de **Gauss-Jordan amb pivoteig parcial** per garantir estabilitat numèrica. 
+1. **Preprocessament:** Forcem els termes independents a ser no negatius ($b_i \geq 0$) canviant el signe de tota la fila corresponent de la matriu $A$ si és necessari. Ademés, comprovem si la matriu conté una base trivial (identitat), cosa que ens permet passar a la fase II directament.
+
+2. **Fase I (Solució Bàsica Factible Inicial):** Per assegurar l'arrencada independentment de les restriccions del problema, estenem la matriu afegint variables artificials (una matriu identitat) que componen la base inicial. Executem el nucli del símplex amb una funció objectiu que minimitza la suma d'aquestes variables artificials. Si el valor òptim d'aquesta fase és major que $0$ (considerant una tolerància de $10^{-8}$), declarem el problema com a infactible. En cas de degeneració (variables artificials encara a la base amb valor zero), intentem pivotar-les fora abans de passar a la fase II.
+
+3. **Fase II (Optimització real):** Un cop garantida la factibilitat, eliminem les variables artificials no bàsiques i restablim el vector de costos original $c$. A partir d’aquí, continuem amb el símplex fins trobar una solució òptima o detectar que el problema és no acotat.
+
+4. **Nucli iteratiu:** En cada iteració, calculem la solució bàsica $x_B = B^{-1} b$, els multiplicadors duals $w = c_B^T B^{-1}$ i la direcció $d_B = -B^{-1} A_q$.
+
 5. **Pivoteig (Regla de Bland):** Per entrar a la base calculem els costos reduïts ($r_j$) manualment; d'entre els que són negatius (més enllà del llindar de tolerància), seleccionem el candidat amb l'índex $j$ més petit. Per sortir de la base apliquem el test del quocient $\min \{x_B/d\}$ considerant $d > 0$, escollint novament l'índex més baix en cas d'empat per complir amb la Regla de Bland.
 
 
-## 4. Solució obtinguda
+## 2. Solució obtinguda
 
 A continuació es detalla el registre de l'execució pas a pas de cada iteració i les solucions òptimes per als 8 problemes dels conjunts indicats.
 
