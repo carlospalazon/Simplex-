@@ -1,20 +1,121 @@
+<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.7/MathJax.js?config=TeX-MML-AM_CHTML"></script>
 
-## 1. Descripció resumida de la implementació
+# 1. Descripció de la implementació
 
-Hem implementat la solució en Python a través de la classe `SimplexSolver`, aplicant el **mètode del símplex primal estructurat en dues fases** i utilitzant la **regla de Bland** en totes les decisions per evitar la degeneració.
+Hem implementat la solució en Python a través de la classe `SimplexSolver`.
 
 Respecte l'aplicació del model, s'han utilitzat dos conjunts de dades: el conjunt 34 i el conjunt 37, resolent un total de 8 problemes d'optimització.
-La seqüència d'execució del nostre codi és la següent:
 
-1. **Preprocessament:** Forcem els termes independents a ser no negatius ($b_i \geq 0$) canviant el signe de tota la fila corresponent de la matriu $A$ si és necessari. Ademés, comprovem si la matriu conté una base trivial (identitat), cosa que ens permet passar a la fase II directament.
+---
 
-2. **Fase I (Solució Bàsica Factible Inicial):** Per assegurar l'arrencada independentment de les restriccions del problema, estenem la matriu afegint variables artificials (una matriu identitat) que componen la base inicial. Executem el nucli del símplex amb una funció objectiu que minimitza la suma d'aquestes variables artificials. Si el valor òptim d'aquesta fase és major que $0$ (considerant una tolerància de $10^{-8}$), declarem el problema com a infactible. En cas de degeneració (variables artificials encara a la base amb valor zero), intentem pivotar-les fora abans de passar a la fase II.
+A continuació expliquem com hem estructurat el codi.
 
-3. **Fase II (Optimització real):** Un cop garantida la factibilitat, eliminem les variables artificials no bàsiques i restablim el vector de costos original $c$. A partir d’aquí, continuem amb el símplex fins trobar una solució òptima o detectar que el problema és no acotat.
+### 1. Preprocessament
 
-4. **Nucli iteratiu:** En cada iteració, calculem la solució bàsica $x_B = B^{-1} b$, els multiplicadors duals $w = c_B^T B^{-1}$ i la direcció $d_B = -B^{-1} A_q$.
+Forcem els termes independents a ser no negatius ($b_i \geq 0$) canviant el signe de tota la fila corresponent de la matriu $A$ i del terme $b_i$ si és necessari:
 
-5. **Pivoteig (Regla de Bland):** Per entrar a la base calculem els costos reduïts ($r_j$) manualment; d'entre els que són negatius (més enllà del llindar de tolerància), seleccionem el candidat amb l'índex $j$ més petit. Per sortir de la base apliquem el test del quocient $\min \{x_B/d\}$ considerant $d > 0$, escollint novament l'índex més baix en cas d'empat per complir amb la Regla de Bland.
+$$
+\text{Si } b_i < 0 \implies b_i \leftarrow -b_i, \quad A_{i,\cdot} \leftarrow -A_{i,\cdot}
+$$
+
+Això és necessari per garantir que la solució bàsica inicial sigui factible quan s'introdueixin les variables artificials, ja que els seus valors inicials coincidiran exactament amb els $b_i$, que han de ser no negatius.
+
+A més, comprovem si les últimes $m$ columnes de la matriu $A$ formen una matriu identitat. Concretament, per a cada columna $j \in \{n-m, \ldots, n-1\}$, verifiquem que conté exactament un $1$ i $m-1$ zeros. Si es compleix aquesta condició, la base inicial és directament factible i podem passar a la fase II sense necessitat d'executar la fase I.
+
+---
+
+### 2. Fase I
+
+Per assegurar l'arrencada del mètode independentment de les restriccions del problema, estenem la matriu afegint $m$ **variables artificials** que componen la base inicial. La matriu ampliada queda:
+
+$$
+A_{\text{ext}} = \begin{bmatrix} A \mid I_m \end{bmatrix} \in \mathbb{R}^{m \times (n+m)}
+$$
+
+El vector de costos de la fase I és:
+
+$$
+c_I = \begin{pmatrix} 0 \cdots 0 & 1 \cdots 1 \end{pmatrix} \in \mathbb{R}^{n+m}
+$$
+
+és a dir, cost zero per a les variables originals i cost unitari per a les artificials. La base inicial és $B = I_m$, amb $B^{-1} = I_m$, i les variables bàsiques inicials són les artificials amb valors $x_B = b \geq 0$.
+
+Executem el nucli del símplex sobre aquest problema ampliat, minimitzant la suma de les variables artificials. Un cop convergit, analitzem el valor òptim $z_I^*$:
+
+- Si $z_I^* > \varepsilon$ (amb $\varepsilon = 10^{-8}$) $\implies$ el problema original és **infactible**. No existeix cap punt que satisfaci simultàniament totes les restriccions i aturem l'execució.
+- Si $z_I^* \leq \varepsilon$ $\implies$ s'ha trobat una solució bàsica factible i continuem a la fase II.
+
+**Gestió de la degeneració:** és possible que $z_I^* = 0$ però alguna variable artificial romangui a la base amb valor zero (solució bàsica degenerada). En aquest cas, intentem pivotar-les fora de la base substituint-les per variables originals: per a cada variable artificial $a_p$ a la base, busquem una variable original $j \in N$ amb component de direcció $|d_{pq}| > \varepsilon$ i realitzem el pivot corresponent sense modificar la solució (el valor de $\theta^*$ és zero). Si no s'aconsegueix expulsar totes les artificials, les mantenim a la base amb cost zero durant la fase II, tractant-les com a variables fictícies inofensives.
+
+---
+
+### 3. Fase II
+
+Un cop garantida la factibilitat, eliminem del conjunt $N$ totes les variables artificials no bàsiques (índexs $j \geq n$) i restablim el vector de costos original $c$. Per a qualsevol variable artificial que hagi quedat a la base per degeneració, li assignem cost zero en la fase II per no distorsionar la funció objectiu.
+
+A partir d'aquí, executem novament el nucli del símplex sobre el problema original fins que es compleixi un dels dos criteris de parada:
+
+- **Solució òptima:** tots els costos reduïts $r_j \geq 0$.
+- **Problema no acotat:** la direcció $d_B \geq 0$ (component a component), és a dir, podem créixer il·limitadament en la direcció de la variable entrant sense violar cap restricció.
+
+---
+
+### 4. Nucli Iteratiu
+
+En cada iteració del símplex, calculem les quantitats següents:
+
+**Solució bàsica actual:**
+$$
+x_B = B^{-1} b
+$$
+
+**Multiplicadors:**
+$$
+w = c_B^\top B^{-1}
+$$
+
+**Costos reduïts de les variables no bàsiques:**
+$$
+r_j = c_j - w^\top A_j, \quad \forall j \in N
+$$
+
+**Direcció de moviment** (per a la variable entrant $q$):
+$$
+d_B = -B^{-1} A_q
+$$
+
+**Actualització de la inversa de la base** via la matriu eta. Si la variable sortint ocupa la fila $p$ de la base, la nova $B^{-1}$ s'obté multiplicant per l'esquerra per la matriu eta $E$, que és la identitat amb la $p$-èsima columna substituïda per:
+
+$$
+\eta_i = \begin{cases} -1 / d_{pq} & \text{si } i = p \\ -d_{iq} / d_{pq} & \text{si } i \neq p \end{cases}
+$$
+
+Aquesta operació té cost $O(m^2)$ per iteració, molt més eficient que invertir $B$ des de zero.
+
+---
+
+### 5. Pivoteig — Regla de Bland
+
+Per garantir la **convergència finita** del mètode (és a dir, evitar que el símplex cicli indefinidament en problemes degenerats), apliquem la **regla de Bland** tant en la selecció de la variable entrant com en la de la sortint.
+
+**Variable entrant ($q$):** calculem els costos reduïts $r_j$ per a totes les variables no bàsiques $j \in N$. D'entre les que compleixen $r_j < -\varepsilon$, seleccionem la de **índex $j$ mínim**:
+
+$$
+q = \min \{ j \in N : r_j < -\varepsilon \}
+$$
+
+Si no n'hi ha cap, la solució actual és òptima.
+
+**Test de no-acotament:** si $d_B \geq -\varepsilon$ (component a component), el problema és no acotat i s'atura.
+
+**Variable sortint ($p$):** apliquem el test del quocient considerant únicament les files amb $d_{B,i} < -\varepsilon$:
+
+$$
+\theta^* = \min_{i : d_{B,i} < -\varepsilon} \left\{ \frac{-x_{B,i}}{d_{B,i}} \right\}
+$$
+
+En cas d'empat (diverses files assoleixen $\theta^*$), apliquem novament la **regla de Bland**: escollim la variable bàsica amb l'**índex original $j$ mínim** entre les empatades. Això és clau en problemes degenerats ($\theta^* = 0$), on sense una regla anti-ciclatge el mètode podria repetir bases indefinidament.
+
 
 <div style="page-break-before: always;"></div>
 
